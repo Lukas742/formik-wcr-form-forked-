@@ -1,21 +1,21 @@
-import React from "react";
-import { Formik, Field, Form } from "formik";
+import React, { useCallback, useState } from "react";
 import {
-  ThemeProvider,
-  Label,
-  Input,
-  Select,
   Button,
-  MultiComboBox,
-  DatePicker,
   CheckBox,
+  DatePicker,
+  Form,
+  FormItem,
+  Input,
   InputType,
-  Title,
-  Option,
+  Label,
+  MultiComboBox,
   MultiComboBoxItem,
+  Option,
+  Select,
+  ThemeProvider,
 } from "@ui5/webcomponents-react";
 import * as Yup from "yup";
-import "./styles.css";
+import { useForm } from "react-hook-form";
 //For the submits property of the button to have effect, you must add the following import
 import "@ui5/webcomponents/dist/features/InputElementsFormSupport.js";
 
@@ -24,109 +24,186 @@ const LoginSchema = Yup.object().shape({
     .email("Invalid email address format")
     .required("Email is required"),
   password: Yup.string()
-    .min(3, "Password must be 3 characters at minimum")
+    .min(5, "Password must be 5 characters at minimum")
     .required("Password is required"),
   terms: Yup.boolean().oneOf([true], "The terms of service must be accepted"),
 });
 
-export default function RegisterForm() {
+const useYupValidationResolver = (validationSchema) =>
+  useCallback(
+    async (data) => {
+      try {
+        const values = await validationSchema.validate(data, {
+          abortEarly: false,
+        });
+
+        return {
+          values,
+          errors: {},
+        };
+      } catch (errors) {
+        return {
+          values: {},
+          errors: errors.inner.reduce(
+            (allErrors, currentError) => ({
+              ...allErrors,
+              [currentError.path]: {
+                type: currentError.type ?? "validation",
+                message: currentError.message,
+              },
+            }),
+            {}
+          ),
+        };
+      }
+    },
+    [validationSchema]
+  );
+
+export default function LoginForm() {
+  const resolver = useYupValidationResolver(LoginSchema);
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    setError,
+    getValues,
+    formState: { errors },
+  } = useForm({
+    resolver,
+    defaultValues: {
+      email: "",
+      password: "",
+      country: "Germany",
+      dob: "",
+      payment: [],
+      terms: false,
+    },
+  });
+  const [invalidEntries, setInvalidEntries] = useState({});
+  // if you need to fully control the state, you can use `getValues` (see `CheckBox`)
+  const values = getValues();
+
+  const onSubmit = (data) => {
+    alert(`Submitted fields:\n${JSON.stringify(data, null, 2)}`);
+    if (Object.keys(invalidEntries).length) {
+      Object.entries(invalidEntries).filter(([name, invalid]) => {
+        // use this to catch internal (not validated by yup) validation of components
+        if (invalid) {
+          setError(name, { type: "internal" }, { shouldFocus: true });
+        }
+      });
+    }
+  };
+
   return (
     <ThemeProvider>
-      <Title>Create Account</Title>
-      <Formik
-        initialValues={{
-          email: "",
-          password: "",
-          country: "Germany",
-          birthday: "",
-          payment: [],
-          terms: false,
-        }}
-        validationSchema={LoginSchema}
-        onSubmit={(...rest) => {
-          console.log(rest);
-          // alert(JSON.stringify(values, null, 2));
-          // console.log(values);
-          // setSubmitting(false);
-        }}
-      >
-        {(formik) => (
-          <Form>
-            <Label required>Email:</Label>
-            <Field
-              as={Input}
-              name="email"
+      <div style={{ maxWidth: "800px" }}>
+        <Form onSubmit={handleSubmit(onSubmit)}>
+          <FormItem
+            label={
+              <Label required showColon>
+                Email
+              </Label>
+            }
+          >
+            <Input
               type={InputType.Email}
-              onInput={formik.handleChange}
-              onChange={formik.onBlur}
-              valueState={formik.errors.email ? "Error" : "None"}
-              valueStateMessage={<div>{formik.errors.email}</div>}
+              {...register("email", { required: true })}
+              onInput={(e) => {
+                setValue("email", e.target.value);
+              }}
+              valueState={errors.email ? "Error" : "None"}
+              valueStateMessage={<div>{errors.email?.message}</div>}
             />
-            <Label required>Password:</Label>
-            <Field
-              as={Input}
-              name="password"
+          </FormItem>
+          <FormItem
+            label={
+              <Label required showColon>
+                Password
+              </Label>
+            }
+          >
+            <Input
               type={InputType.Password}
-              onInput={formik.handleChange}
-              onChange={formik.onBlur}
-              valueState={formik.errors.password ? "Error" : "None"}
-              valueStateMessage={<div>{formik.errors.password}</div>}
+              {...register("password", { required: true })}
+              onInput={(e) => {
+                setValue("password", e.target.value);
+              }}
+              valueState={errors.password ? "Error" : "None"}
+              valueStateMessage={<div>{errors.password?.message}</div>}
             />
-            <Label>Country:</Label>
-            <Field
-              as={Select}
-              name="country"
-              onChange={(e) =>
-                formik.setFieldValue(
-                  "country",
-                  e.detail.selectedOption.innerText
-                )
-              }
+          </FormItem>
+          <FormItem label="Country">
+            <Select
+              {...register("country")}
+              onChange={(e) => {
+                setValue("country", e.detail.selectedOption.textContent);
+              }}
             >
               <Option>Germany</Option>
               <Option>France</Option>
               <Option>Italy</Option>
-            </Field>
-            <Label>Data of Birth:</Label>
-            <Field
-              as={DatePicker}
-              name="birthday"
+            </Select>
+          </FormItem>
+          <FormItem label={<Label showColon>Date of Birth</Label>}>
+            <DatePicker
+              {...register("dob")}
               onChange={(e) => {
-                console.log(formik.errors.email);
-                formik.setFieldValue("birthday", e.detail.value);
+                if (e.detail.valid) {
+                  setValue("dob", e.detail.value);
+                  // internal validation
+                  setInvalidEntries((prev) => ({ ...prev, dob: false }));
+                } else {
+                  // internal validation
+                  setInvalidEntries((prev) => ({ ...prev, dob: true }));
+                }
               }}
-            ></Field>
-            <Label>Payment methods</Label>
-            <Field
-              as={MultiComboBox}
-              name="payment"
+            />
+          </FormItem>
+          <FormItem label="Payment methods">
+            <MultiComboBox
+              {...register("payment", {
+                onChange: undefined,
+                onBlur:
+                  undefined /*  disable `onChange` and `onBlur` to prevent unwanted submission of strings*/,
+              })}
               onSelectionChange={(e) => {
-                const selected = [];
-                Object.entries(e.detail.items).forEach(([key, val]) => {
-                  selected.push(val.text);
-                });
-                formik.setFieldValue("payment", selected);
+                setValue(
+                  "payment",
+                  e.detail.items.map((item) => item.getAttribute("text"))
+                );
               }}
             >
               <MultiComboBoxItem text="Credit card" />
               <MultiComboBoxItem text="PayPal" />
               <MultiComboBoxItem text="Bank transfer" />
-            </Field>
-            <Field
-              as={CheckBox}
-              name="terms"
-              checked={formik.getFieldProps("terms").value}
-              text="I accept the terms of service"
-              onChange={(e) => formik.setFieldValue("terms", e.target.checked)}
-              valueState={formik.errors.terms ? "Error" : "None"}
-            ></Field>
-
-            <Button type="submit" onClick={formik.handleSubmit}>
-              Submit
-            </Button>
-          </Form>
-        )}
-      </Formik>
+            </MultiComboBox>
+          </FormItem>
+          <FormItem
+            label={
+              <Label required showColon>
+                I accept the terms of service
+              </Label>
+            }
+          >
+            <CheckBox
+              {...register("terms")}
+              onChange={(e) => {
+                setValue("terms", e.target.checked);
+              }}
+              checked={values.terms}
+              valueState={errors.terms ? "Error" : "None"}
+            />
+          </FormItem>
+        </Form>
+        <Button
+          onClick={handleSubmit(onSubmit)}
+          style={{ marginBlockStart: "1rem" }}
+        >
+          Submit
+        </Button>
+      </div>
     </ThemeProvider>
   );
 }
